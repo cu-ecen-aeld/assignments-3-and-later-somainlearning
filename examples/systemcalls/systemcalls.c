@@ -1,4 +1,10 @@
 #include "systemcalls.h"
+#include <sys/wait.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <syslog.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -9,15 +15,39 @@
 */
 bool do_system(const char *cmd)
 {
-
-/*
- * TODO  add your code here
- *  Call the system() function with the command set in the cmd
- *   and return a boolean true if the system() call completed with success
- *   or false() if it returned a failure
-*/
-
-    return true;
+    openlog("do_system_fn_logs", LOG_PID | LOG_CONS, LOG_USER);
+    syslog(LOG_INFO, "Entry with cmd: %s", cmd);
+    int status = system(cmd);
+    bool rv = false;
+    if (status == -1) 
+    {
+	perror("system");
+	rv = false;
+    } 
+    else if (WIFEXITED(status)) 
+    {
+    	syslog(LOG_INFO, "Success with code: %d", WEXITSTATUS(status));
+	rv = true;
+    } 
+    else if (WIFSIGNALED(status)) 
+    {
+    	syslog(LOG_ERR, "Killed by signal: %d", WTERMSIG(status));
+	rv = false;
+    } 
+    else if (WIFSTOPPED(status)) 
+    {
+    	syslog(LOG_ERR, "Stopped by signal: %d", WSTOPSIG(status));
+	rv = false;
+    } 
+    else 
+    {
+    	syslog(LOG_ERR, "Unknown error");
+	rv = false;
+    }
+    
+    syslog(LOG_INFO, "Exited with rv: %d", rv);
+    closelog();
+    return rv;
 }
 
 /**
@@ -36,6 +66,10 @@ bool do_system(const char *cmd)
 
 bool do_exec(int count, ...)
 {
+    bool rv = false;
+    int status = 0;
+    pid_t pid = 0;
+
     va_list args;
     va_start(args, count);
     char * command[count+1];
@@ -45,23 +79,44 @@ bool do_exec(int count, ...)
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
-
-/*
- * TODO:
- *   Execute a system command by calling fork, execv(),
- *   and wait instead of system (see LSP page 161).
- *   Use the command[0] as the full path to the command to execute
- *   (first argument to execv), and use the remaining arguments
- *   as second argument to the execv() command.
- *
-*/
 
     va_end(args);
 
-    return true;
+    pid = fork();
+
+    if (pid < 0) 
+    {
+        perror("fork");
+        rv = false;
+    } 
+    else if (pid == 0) 
+    {
+        execv(command[0], command);
+        perror("execv");
+        _exit(127);
+    } 
+    else 
+    {
+	if (waitpid(pid, &status, 0) == -1) 
+	{
+	    perror("waitpid");
+	    rv = false;
+	}
+	if (WIFEXITED(status)) 
+	{ 
+	    rv = (0 == WEXITSTATUS(status)); 
+	} 
+	else if (WIFSIGNALED(status)) 
+	{ 
+	    rv = false; 
+	} 
+	else 
+	{ 
+	    rv = false; 
+	}
+    }
+
+    return rv;
 }
 
 /**
@@ -71,6 +126,10 @@ bool do_exec(int count, ...)
 */
 bool do_exec_redirect(const char *outputfile, int count, ...)
 {
+    bool rv = false;
+    int status = 0;
+    pid_t pid = 0;
+
     va_list args;
     va_start(args, count);
     char * command[count+1];
@@ -80,20 +139,55 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
-
-
-/*
- * TODO
- *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
- *   redirect standard out to a file specified by outputfile.
- *   The rest of the behaviour is same as do_exec()
- *
-*/
-
     va_end(args);
 
-    return true;
+    pid = fork();
+    if (pid < 0) 
+    {
+        perror("fork");
+        rv = false;
+    } 
+    else if (pid == 0) 
+    {    
+	int fd = open(outputfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0) 
+	{
+            perror("open");
+            _exit(127);
+        }
+
+        if (dup2(fd, STDOUT_FILENO) < 0) 
+	{
+            perror("dup2");
+            close(fd);
+            _exit(127);
+        }
+        close(fd);
+
+        execv(command[0], command);
+        perror("execv");
+        _exit(127);
+    } 
+    else 
+    {
+	if (waitpid(pid, &status, 0) == -1) 
+	{
+	    perror("waitpid");
+	    rv = false;
+	}
+	if (WIFEXITED(status)) 
+	{ 
+	    rv = (0 == WEXITSTATUS(status)); 
+	} 
+	else if (WIFSIGNALED(status)) 
+	{ 
+	    rv = false; 
+	} 
+	else 
+	{ 
+	    rv = false; 
+	}
+    }
+
+    return rv;
 }
