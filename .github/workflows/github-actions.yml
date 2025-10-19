@@ -1,8 +1,8 @@
 name: assignment-test
 on:
     push:
-        tags:
-            - 'assignment_3_part_2'
+        tags-ignore:
+            - '*'
         branches:
             - '*'
 jobs:
