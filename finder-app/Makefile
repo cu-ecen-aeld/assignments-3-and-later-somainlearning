@@ -4,7 +4,7 @@
 ifeq ($(CROSS_COMPILE),)
 CC = gcc
 else
-CC = $(CROSS_COMPILE)
+CC = $(CROSS_COMPILE)gcc
 endif
 
 CFLAGS = -Wall -Werror -Wextra -O2
